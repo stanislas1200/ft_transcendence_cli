@@ -55,15 +55,12 @@ python pong_cli.py
 ### Command-Line Arguments
 
 You can pass arguments when starting the program to avoid interactive prompts for username and password. Below are the available commands and options:
-
 | Command                    | Description                                                 |
 |-----------------------------|-------------------------------------------------------------|
 | `--help`                    | Displays help and usage instructions.                       |
 | `--username <username>`      | Logs in with the specified username.                        |
 | `--password <password>`      | Logs in with the specified password.                        |
-| `--start`                   | Starts the Pong game after logging in.                      |
-| `--difficulty <level>`       | Sets the game difficulty (`easy`, `medium`, `hard`). Default is `medium`. |
-
+| `--register`                | Registers the user after logging in.                        |
 ### Example
 
 This command logs in the user `player1` with the password `mypassword` and starts the Pong game.
