@@ -5,6 +5,7 @@ import asyncio
 import websockets
 import ssl
 import json
+import argparse
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed
@@ -29,6 +30,23 @@ game_state = {
 
 session = requests.Session()
 
+def register(win):
+    url = 'https://localhost:8000/register'
+    first_name = get_user_input(win, "First Name: ")
+    last_name = get_user_input(win, "Last Name: ")
+    email = get_user_input(win, "Email: ")
+    username = get_user_input(win, "Username: ")
+    password = get_user_input(win, "Password: ")
+    conf_password = get_user_input(win, "Confirm Password: ")
+    data = {'first_name': first_name, 'last_name': last_name, 'email': email, 'username': username, 'password': password, 'c_password': conf_password}
+    response = session.post(url, data=data, verify=False)
+    if response.status_code == 200:
+        return login(username, password)
+    else:
+        print('Failed to register:', response.status_code)
+        print(response.text)
+        return None
+
 def login(username, password):
     url = 'https://localhost:8000/login'
     data = {'username': username, 'password': password}
@@ -39,11 +57,23 @@ def login(username, password):
         print('Failed to login:', response.status_code)
         return None
 
-def join_game():
-    url = 'https://localhost:8001/game/join?gameName=pong'
+def join_game(mode):
+    global user_id, party_id
+    param = ''
+    if mode == 1:
+        param = '&nbPlayers=1'
+    if mode == 2:
+        param = '&nbPlayers=2&gameMode=ffa'
+    if mode == 3:
+        param = '&nbPlayers=4&gameMode=team'
+    
+    url = f'https://localhost:8001/game/join?gameName=pong{param}'
     response = session.post(url, verify=False)
     if response.status_code == 200:
-        return response.json()
+
+        party_id = response.json()['game_id']
+        user_id = session.cookies.get('userId')
+        return
     else:
         print('Failed to join game:', response.status_code)
         return None
@@ -95,37 +125,28 @@ def get_user_input(win, prompt_string):
     curses.noecho()
     return input_str
 
-async def main(stdscr):
-    global websocket
-    websocket = None
-    win = curses.newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0)
+def print_menu(win, selected_row_idx, menu):
+    win.clear()
+    h, w = win.getmaxyx()
+    
+    for idx, row in enumerate(menu):
+        x = w//2 - len(row)//2
+        y = h//2 - len(menu)//2 + idx
+        if idx == selected_row_idx:
+            win.attron(curses.color_pair(1))
+            win.addstr(y, x, row)
+            win.attroff(curses.color_pair(1))
+        else:
+            win.addstr(y, x, row)
+    
+    win.refresh()
 
-    login_response = None
-    while not login_response:
-        username = get_user_input(win, 'Enter your username: ')
-        password = get_user_input(win, 'Enter your password: ')
-        login_response = login(username, password)
-        if not login_response:
-            win.erase()
-            win.addstr(0, 0, 'Invalid username or password. Please try again.')
-            win.refresh()
-            time.sleep(2)
-            win.erase()
-
-    join_response = join_game()
-    if not join_response:
-        return
-
-    party_id = join_response['game_id']
-    user_id = session.cookies.get('userId')
+async def play(win):
+    global user_id, party_id
 
     asyncio.create_task(connect_to_websocket(party_id, user_id, game_state))
-
-    curses.curs_set(0)
     win.nodelay(1)
     win.timeout(0)  # Reduce timeout for more responsive input handling
-    win.keypad(True)
-
     while True:
         win.erase()
         win.border(0)
@@ -148,5 +169,109 @@ async def main(stdscr):
         win.refresh()
         await asyncio.sleep(0.01)  # Reduce sleep duration for more responsive updates
 
+def handle_menu(win, menu_options):
+    current_row = 0
+    while True:
+        print_menu(win, current_row, menu_options)
+
+        key = win.getch()
+
+        if key == curses.KEY_UP and current_row > 0:
+            current_row -= 1
+        elif key == curses.KEY_DOWN and current_row < len(menu_options) - 1:
+            current_row += 1
+        elif key == ord('\n'):  # Enter key
+            return current_row
+
+def main_menu(win):
+    menu_options = ['Play', 'History', 'Stats', 'Leaderboard']
+    ret = handle_menu(win, menu_options)
+    return ret + 2
+
+def play_menu(win):
+    menu_options = ['solo', 'ffa 2', 'team 4', 'back']
+    ret = handle_menu(win, menu_options)
+    mode = 0
+    if ret == 0:
+        #solo
+        mode = 1
+        ret = 6
+    elif ret == 1:
+        #ffa
+        mode = 2
+        ret = 6
+    elif ret == 2:
+        # team
+        mode = 3
+        ret = 6
+    elif ret == 3:
+        ret = 1
+    return ret, mode
+
+async def app(win):
+    menu = 1
+    mode = 0
+    while True:
+        if menu == 1:
+            menu = main_menu(win)
+        elif menu == 2:
+            menu, mode = play_menu(win)
+        # elif menu == 3:
+        #     menu = history(win)
+        # elif menu == 4:
+        #     menu = stats(win)
+        # elif menu == 5:
+        #     menu = leaderboard(win)
+        elif menu == 6:
+            join_game(mode)
+            menu = 7
+        elif menu == 7:
+            await play(win) 
+
+async def main(stdscr,):
+    global websocket
+    websocket = None
+
+    parser = argparse.ArgumentParser(description='Pong CLI for authentication')
+    parser.add_argument('--username', type=str, required=False, help='Your username')
+    parser.add_argument('--password', type=str, required=False, help='Your password')
+    parser.add_argument('--register', action='store_true', help='Register a new account')
+    
+    # # Parse the arguments
+    args = parser.parse_args()
+
+    username = args.username
+    password = args.password
+    
+    win = curses.newwin(SCREEN_HEIGHT, SCREEN_WIDTH, 0, 0)
+
+    login_response = None
+    if args.register:
+            register(win)
+    else:
+        if not username and not password:
+            username = get_user_input(win, 'Enter your username: ')
+            password = get_user_input(win, 'Enter your password: ')
+        while not login_response:
+            login_response = login(username, password)
+            if not login_response:
+                win.erase()
+                win.addstr(0, 0, 'Invalid username or password. Please try again.')
+                win.refresh()
+                time.sleep(2)
+                win.erase()
+                username = get_user_input(win, 'Enter your username: ')
+                password = get_user_input(win, 'Enter your password: ')
+
+    win.keypad(True)
+
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Color pair 1: Black on White
+
+    
+    # Hide cursor
+    curses.curs_set(0)
+    await app(win)
+  
 if __name__ == "__main__":
     curses.wrapper(lambda stdscr: asyncio.run(main(stdscr)))
