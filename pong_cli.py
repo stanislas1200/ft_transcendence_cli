@@ -96,12 +96,13 @@ async def connect_to_websocket(party_id, user_id, game_state):
                 message = await websocket.recv()
                 data = json.loads(message)
                 if 'x' in data:
-                    game_state['ball_x'] = int(data['x'] * SCREEN_WIDTH / 800)
-                    game_state['ball_y'] = int(data['y'] * SCREEN_HEIGHT / 600)
-                    game_state['paddle1_y'] = int(data['positions'][0] * SCREEN_HEIGHT / 600)
-                    game_state['paddle2_y'] = int(data['positions'][1] * SCREEN_HEIGHT / 600)
-                    game_state['score1'] = data['scores'][0]
-                    game_state['score2'] = data['scores'][1]
+                    if data['state'] == 'playing':
+                        game_state['ball_x'] = int(data['x'] * SCREEN_WIDTH / 800)
+                        game_state['ball_y'] = int(data['y'] * SCREEN_HEIGHT / 600)
+                        game_state['paddle1_y'] = int(data['positions'][0] * SCREEN_HEIGHT / 600)
+                        game_state['paddle2_y'] = int(data['positions'][1] * SCREEN_HEIGHT / 600)
+                        game_state['score1'] = data['scores'][0]
+                        game_state['score2'] = data['scores'][1]
     except websockets.exceptions.ConnectionClosedOK:
         print('Connection closed')
     except websockets.exceptions.ConnectionClosedError:
@@ -127,6 +128,7 @@ def get_user_input(win, prompt_string):
 
 def print_menu(win, selected_row_idx, menu):
     win.clear()
+    win.addstr(0, 0, 'Under construct')
     h, w = win.getmaxyx()
     
     for idx, row in enumerate(menu):
@@ -140,6 +142,11 @@ def print_menu(win, selected_row_idx, menu):
             win.addstr(y, x, row)
     
     win.refresh()
+
+def under_construct(win):
+    menu_options = ['back']
+    ret = handle_menu(win, menu_options)
+    return 1
 
 async def play(win):
     global user_id, party_id
@@ -157,7 +164,8 @@ async def play(win):
         draw_ball(win, game_state['ball_y'], game_state['ball_x'])
 
         # Draw score
-        win.addstr(0, SCREEN_WIDTH // 2 - 1, f"{game_state['score1']} - {game_state['score2']}")
+        if game_state['score1'] and game_state['score2']:
+            win.addstr(0, SCREEN_WIDTH // 2 - 1, f"{game_state['score1']} - {game_state['score2']}")
 
         key = win.getch()
         if websocket:
@@ -216,12 +224,18 @@ async def app(win):
             menu = main_menu(win)
         elif menu == 2:
             menu, mode = play_menu(win)
-        # elif menu == 3:
-        #     menu = history(win)
-        # elif menu == 4:
-        #     menu = stats(win)
-        # elif menu == 5:
-        #     menu = leaderboard(win)
+        elif menu == 3:
+            under_construct(win)
+            menu = 1
+            # menu = history(win)
+        elif menu == 4:
+            under_construct(win)
+            menu = 1
+            # menu = stats(win)
+        elif menu == 5:
+            under_construct(win)
+            menu = 1
+            # menu = leaderboard(win)
         elif menu == 6:
             join_game(mode)
             menu = 7
