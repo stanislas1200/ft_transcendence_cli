@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# URL d'enregistrement
+register_url="https://localhost:8000/register"
+# URL de connexion
+login_url="https://localhost:8000/login"
+# URL pour rejoindre un tournoi
+tournament_url="https://localhost:8001/game/join_tournament/3"
+
+# Clé API
+api_key="ioveLshOgaYBXxAvwqKsIMEajZdJG5M9"
+
+# Créer 8 comptes, se connecter et rejoindre le tournoi
+for i in {1..8}; do
+    username="$i"
+    email="user$i@domain.com"
+    password="$i"
+
+    # Enregistrer le compte
+    curl --location --silent --insecure --cookie-jar cookies_$i.txt \
+        --header 'Content-Type: application/x-www-form-urlencoded' \
+        --data-urlencode "username=$username" \
+        --data-urlencode "first_name=$username" \
+        --data-urlencode "last_name=$username" \
+        --data-urlencode "email=$email" \
+        --data-urlencode "password=$password" \
+        --data-urlencode "c_password=$password" \
+        "$register_url"
+
+    echo "Account $username created."
+
+    # Se connecter et récupérer les cookies mis à jour
+    curl --location --silent --insecure --cookie cookies_$i.txt --cookie-jar cookies_$i.txt \
+        --header 'Content-Type: application/x-www-form-urlencoded' \
+        --data-urlencode "username=$username" \
+        --data-urlencode "password=$password" \
+        "$login_url"
+
+    echo "User $username logged in."
+
+    # Appel à l'API pour rejoindre le tournoi
+    curl --location --request POST --insecure "$tournament_url" \
+        --header "X-API-Key: $api_key" \
+        --cookie cookies_$i.txt
+
+    echo "User $username joined the tournament."
+done
